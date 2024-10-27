@@ -1,12 +1,15 @@
 [package]
 name = "high_precision_clock"
-version = "0.1.0"
+version = "0.1.3"
+edition = "2021"
 authors = ["Alpha alpha.pku@gmail.com"]
 description = "A high-precision clock for cloud servers."
+homepage = "https://github.com/alphapku/high_precision_clock"
 repository = "https://github.com/alphapku/high_precision_clock"
-license = "MIT OR Apache-2.0"
+documentation = "https://docs.rs/high_precision_lock"
+license = "MIT"
 keywords = ["clock", "high-precision", "cloud"]
-categories = ["time", "no_std"]
+categories = ["asynchronous", "date-and-time", "finance"]
 
 [dependencies]
 # Required dependencies
