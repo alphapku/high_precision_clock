@@ -1,19 +1,17 @@
-/// `SimpleHighPrecisionClock` is a high-precision time source that uses the CPU's
-/// Time Stamp Counter (TSC) to measure time elapsed since instantiation in nanoseconds.
-///
-/// This clock calibrates the TSC upon initialization, converting TSC ticks to nanoseconds
-/// without relying on the CPU frequency, ensuring greater precision and stability.
-///
-/// # Example
-/// ```
-/// use high_precision_clock::SimpleHighPrecisionClock;
-/// let clock = SimpleHighPrecisionClock::new();
-/// let time_ns = clock.now();
-/// println!("Elapsed time in nanoseconds: {}", time_ns);
-/// ```
-
-
-use std::time::SystemTime;
+//! `SimpleHighPrecisionClock` is a high-precision time source that uses the CPU's
+//! Time Stamp Counter (TSC) to measure time elapsed since instantiation in nanoseconds.
+//!
+//! This clock calibrates the TSC upon initialization, converting TSC ticks to nanoseconds
+//! without relying on the CPU frequency, ensuring greater precision and stability.
+//!
+//! # Example
+//! ```
+//! use high_precision_clock::SimpleHighPrecisionClock;
+//! let clock = SimpleHighPrecisionClock::new();
+//! let time_ns = clock.now();
+//! println!("Elapsed time in nanoseconds: {}", time_ns);
+//! ```
+use std::time::{Duration, SystemTime};
 
 fn get_time() -> u64 {
     // Reads the Time Stamp Counter (TSC)
@@ -31,14 +29,16 @@ fn rdsysns() -> u64 {
 pub struct SimpleHighPrecisionClock {
     base_tsc: u64,
     base_ns: u64,
-    ns_per_tsc: f64, // Keeps fractional precision for accurate calculations
+    ns_per_tsc: f64,
 }
 
 impl SimpleHighPrecisionClock {
     pub fn new() -> Self {
-        let base_ns = rdsysns() as u64;
-        let base_tsc = get_time();
-        let ns_per_tsc = Self::calibrate_ns_per_tsc(); // Returns f64 for precision
+        // Step 1: Calibrate the ns_per_tsc value for precision in time conversion
+        let ns_per_tsc = Self::calibrate_ns_per_tsc();
+
+        // Step 2: Perform multiple synchronization attempts to get a stable base TSC and system time
+        let (base_tsc, base_ns) = Self::sync_time();
 
         SimpleHighPrecisionClock {
             base_tsc,
@@ -50,12 +50,35 @@ impl SimpleHighPrecisionClock {
     fn calibrate_ns_per_tsc() -> f64 {
         let base_tsc = get_time();
         let base_ns = rdsysns();
-        std::thread::sleep(std::time::Duration::from_millis(20)); // Initial delay
+        std::thread::sleep(Duration::from_millis(20)); // Wait to allow meaningful calibration
 
         let new_tsc = get_time();
         let new_ns = rdsysns();
 
-        (new_ns - base_ns) as f64 / (new_tsc - base_tsc) as f64 // Precise fractional value
+        (new_ns - base_ns) as f64 / (new_tsc - base_tsc) as f64
+    }
+
+    fn sync_time() -> (u64, u64) {
+        const SYNC_ATTEMPTS: usize = 10; // Number of attempts to synchronize
+        let mut best_tsc = 0;
+        let mut best_ns = 0;
+        let mut smallest_diff = u64::MAX;
+
+        for _ in 0..SYNC_ATTEMPTS {
+            let tsc_start = get_time();
+            let ns_start = rdsysns();
+            let tsc_end = get_time();
+
+            let tsc_diff = tsc_end - tsc_start;
+
+            if tsc_diff < smallest_diff {
+                smallest_diff = tsc_diff;
+                best_tsc = (tsc_start + tsc_end) / 2;
+                best_ns = ns_start;
+            }
+        }
+
+        (best_tsc, best_ns)
     }
 
     pub fn now(&self) -> u64 {
@@ -65,7 +88,6 @@ impl SimpleHighPrecisionClock {
         self.base_ns + elapsed_ns
     }
 }
-
 
 #[cfg(test)]
 mod tests {

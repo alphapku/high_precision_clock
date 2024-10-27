@@ -1,6 +1,6 @@
 [package]
 name = "high_precision_clock"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 authors = ["Alpha alpha.pku@gmail.com"]
 description = "A high-precision clock for cloud servers."
@@ -9,7 +9,8 @@ repository = "https://github.com/alphapku/high_precision_clock"
 documentation = "https://docs.rs/high_precision_lock"
 license = "MIT"
 keywords = ["clock", "high-precision", "cloud"]
-categories = ["asynchronous", "date-and-time", "finance"]
+categories = ["date-and-time", "finance"]
 
 [dependencies]
+chrono = "0.4.38"
 
