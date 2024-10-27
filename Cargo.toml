@@ -1,6 +1,6 @@
 [package]
 name = "high_precision_clock"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 authors = ["Alpha alpha.pku@gmail.com"]
 description = "A high-precision clock for cloud servers."

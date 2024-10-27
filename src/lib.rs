@@ -1,16 +1,25 @@
-//! `SimpleHighPrecisionClock` is a high-precision time source that uses the CPU's
+//! # SimpleHighPrecisionClock
+//!
+//! `SimpleHighPrecisionClock` provides a high-precision clock that leverages the CPU's
 //! Time Stamp Counter (TSC) to measure time elapsed since instantiation in nanoseconds.
 //!
-//! This clock calibrates the TSC upon initialization, converting TSC ticks to nanoseconds
-//! without relying on the CPU frequency, ensuring greater precision and stability.
+//! This clock is calibrated during initialization to convert TSC ticks to nanoseconds
+//! independently of CPU frequency, ensuring high precision and consistent measurements.
 //!
-//! # Example
-//! ```
+//! ## Example
+//!
+//! ```rust
 //! use high_precision_clock::SimpleHighPrecisionClock;
+//!
 //! let clock = SimpleHighPrecisionClock::new();
 //! let time_ns = clock.now();
 //! println!("Elapsed time in nanoseconds: {}", time_ns);
 //! ```
+//!
+//! This library is particularly useful for applications that require precise time
+//! tracking in environments where traditional time sources may lack stability or
+//! granularity.
+
 use std::time::{Duration, SystemTime};
 
 fn get_time() -> u64 {
