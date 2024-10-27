@@ -16,9 +16,13 @@
 //! ```rust
 //! use high_precision_clock::SimpleHighPrecisionClock;
 //!
-//! let clock = SimpleHighPrecisionClock::new(10000);
+//! let mut clock = SimpleHighPrecisionClock::new(100 * 1000 * 1000);
 //! let time_ns = clock.now();
 //! println!("Elapsed time in nanoseconds: {}", time_ns);
+//! loop {
+//!     clock.calibrate();
+//!     // your task
+//!}
 //! ```
 //!
 //! This library is particularly useful for applications that require precise time
