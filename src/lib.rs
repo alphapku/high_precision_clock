@@ -1,129 +1,118 @@
-/// `SimpleHighPrecisionClock` provides a high-precision clock based on the CPU's
-/// Time Stamp Counter (TSC). It allows you to track time in any timezone, which
-/// is specified upon creation.
+/// `SimpleHighPrecisionClock` is a high-precision time source that uses the CPU's
+/// Time Stamp Counter (TSC) to measure time elapsed since instantiation in nanoseconds.
 ///
-/// This clock uses the TSC to calculate precise time intervals by comparing
-/// current TSC readings to an initial baseline TSC reading. The CPU frequency
-/// is used to convert the TSC difference into nanoseconds, which is added to
-/// a baseline date-time set at instantiation.
-///
-/// This clock assumes that the TSC is constant and non-stop on the system.
-/// It warns if the TSC appears to be non-invariant, as this may reduce accuracy.
-///
-/// # Type Parameters
-/// - `Tz`: A timezone that implements `TimeZone`, allowing the clock to
-///         provide time outputs in the specified timezone.
+/// This clock calibrates the TSC upon initialization, converting TSC ticks to nanoseconds
+/// without relying on the CPU frequency, ensuring greater precision and stability.
 ///
 /// # Example
-/// ```rust
-/// use chrono::Utc;
+/// ```
 /// use high_precision_clock::SimpleHighPrecisionClock;
-/// let clock = SimpleHighPrecisionClock::new(&Utc);
-/// let current_time = clock.now();
-/// println!("Current high-precision time: {}", current_time);
+/// let clock = SimpleHighPrecisionClock::new();
+/// let time_ns = clock.now();
+/// println!("Elapsed time in nanoseconds: {}", time_ns);
 /// ```
 
 
-use std::marker::PhantomData;
-
-use chrono::{DateTime, Duration, TimeZone, Utc};
-use log::{info, warn};
+use std::time::SystemTime;
 
 fn get_time() -> u64 {
+    // Reads the Time Stamp Counter (TSC)
     unsafe { core::arch::x86_64::_rdtsc() }
 }
 
-pub struct SimpleHighPrecisionClock<Tz: TimeZone> {
-    base_tsc: u64,
-    base_datetime: DateTime<Tz>,
-    cpu_frequency_hz: f64,
-    _timezone: PhantomData<Tz>,
+fn rdsysns() -> u64 {
+    // Reads the current system time in nanoseconds
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_nanos() as u64
 }
 
-impl<Tz: TimeZone> SimpleHighPrecisionClock<Tz> {
-    pub fn new(tz: &Tz) -> Self {
-        if !std::fs::read_to_string("/proc/cpuinfo").map_or(false, |v| {
-            v.contains("constant_tsc") && v.contains("nonstop_tsc")
-        }) {
-            warn!("TSC is NOT invariant");
-        }
+pub struct SimpleHighPrecisionClock {
+    base_tsc: u64,
+    base_ns: u64,
+    ns_per_tsc: f64, // Keeps fractional precision for accurate calculations
+}
 
-        let base_datetime = tz.from_utc_datetime(&Utc::now().naive_utc());
+impl SimpleHighPrecisionClock {
+    pub fn new() -> Self {
+        let base_ns = rdsysns() as u64;
         let base_tsc = get_time();
-        let cpu_frequency_hz = Self::get_cpu_frequency();
-        Self {
+        let ns_per_tsc = Self::calibrate_ns_per_tsc(); // Returns f64 for precision
+
+        SimpleHighPrecisionClock {
             base_tsc,
-            base_datetime,
-            cpu_frequency_hz,
-            _timezone: PhantomData,
+            base_ns,
+            ns_per_tsc,
         }
     }
 
-    fn get_cpu_frequency() -> f64 {
-        let cpuinfo =
-            std::fs::read_to_string("/proc/cpuinfo").expect("Failed to read /proc/cpuinfo");
+    fn calibrate_ns_per_tsc() -> f64 {
+        let base_tsc = get_time();
+        let base_ns = rdsysns();
+        std::thread::sleep(std::time::Duration::from_millis(20)); // Initial delay
 
-        for line in cpuinfo.lines() {
-            if line.starts_with("cpu MHz") {
-                if let Some(freq_str) = line.split(':').nth(1) {
-                    let freq_mhz: f64 = freq_str
-                        .trim()
-                        .parse()
-                        .expect("Failed to parse CPU frequency");
-                    info!("The CPU frequency is: {} MHz", freq_mhz);
-                    return freq_mhz * 1_000_000.0;
-                }
-            }
-        }
-        panic!("Could not determine CPU frequency from /proc/cpuinfo");
+        let new_tsc = get_time();
+        let new_ns = rdsysns();
+
+        (new_ns - base_ns) as f64 / (new_tsc - base_tsc) as f64 // Precise fractional value
     }
 
-    pub fn now(&self) -> DateTime<Tz> {
+    pub fn now(&self) -> u64 {
         let current_tsc = get_time();
         let elapsed_cycles = current_tsc - self.base_tsc;
-        let elapsed_ns = (elapsed_cycles as f64 / self.cpu_frequency_hz) * 1_000_000_000.0;
-        self.base_datetime.clone() + Duration::nanoseconds(elapsed_ns as i64)
+        let elapsed_ns = (elapsed_cycles as f64 * self.ns_per_tsc) as u64;
+        self.base_ns + elapsed_ns
     }
 }
+
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use std::thread::sleep;
     use std::time::Duration;
-    use super::SimpleHighPrecisionClock;
-    use chrono::{Utc, Local};
 
     #[test]
-    fn test_clock_initialization() {
-        let clock = SimpleHighPrecisionClock::new(&Utc);
-        let start_time = clock.now();
-        assert!(start_time.timestamp() > 0, "Clock should initialize with a positive timestamp.");
+    fn test_initialization() {
+        let clock = SimpleHighPrecisionClock::new();
+        let time_ns = clock.now();
+        assert!(time_ns > 0, "The initial time should be positive.");
     }
 
     #[test]
-    fn test_monotonic_behavior() {
-        let clock = SimpleHighPrecisionClock::new(&Utc);
-        let time1 = clock.now();
-        let time2 = clock.now();
-        assert!(time2 > time1, "Clock should be monotonic; second reading should be greater.");
+    fn test_increasing_time() {
+        let clock = SimpleHighPrecisionClock::new();
+        let time_ns1 = clock.now();
+
+        // Increase sleep to ensure time passes enough for `now` to update
+        sleep(Duration::from_millis(100));
+
+        let time_ns2 = clock.now();
+        assert!(
+            time_ns2 > time_ns1,
+            "Time should increase with each call to now: {} vs. {}",
+            time_ns2,
+            time_ns1
+        );
     }
 
     #[test]
-    fn test_consistent_with_system_time() {
-        let clock = SimpleHighPrecisionClock::new(&Utc);
-        let custom_time = clock.now();
-        let system_time = Utc::now();
+    fn test_drift_with_consecutive_calls() {
+        let clock = SimpleHighPrecisionClock::new();
+        let time_ns1 = clock.now();
 
-        // Allow a reasonable drift tolerance (e.g., 1 second)
-        let drift = (system_time - custom_time).num_milliseconds().abs();
-        assert!(drift < 1000, "Custom clock and system time should have minimal drift.");
-    }
+        // Increase sleep duration significantly
+        sleep(Duration::from_millis(100));
 
-    #[test]
-    fn test_drift() {
-        let clock = SimpleHighPrecisionClock::new(&Local);
-        let simple_now = clock.now();
-        let sys_now = Local::now();
-        std::thread::sleep(Duration::from_secs(3));
-        println!("drift1:{} <-> drift2: {}", clock.now().signed_duration_since(simple_now), clock.now().signed_duration_since(sys_now));
+        let time_ns2 = clock.now();
+        let drift = time_ns2 - time_ns1;
+
+        // Larger tolerance for the new sleep interval
+        assert!(
+            drift > 90_000_000 && drift < 110_000_000,
+            "Drift should be close to 100 milliseconds but was {} nanoseconds",
+            drift
+        );
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "high_precision_clock"
-version = "0.1.3"
+version = "0.1.5"
 edition = "2021"
 authors = ["Alpha alpha.pku@gmail.com"]
 description = "A high-precision clock for cloud servers."
@@ -12,18 +12,4 @@ keywords = ["clock", "high-precision", "cloud"]
 categories = ["asynchronous", "date-and-time", "finance"]
 
 [dependencies]
-# Required dependencies
-log = "0.4"
-chrono = "0.4"
 
-# Optional dependencies, enabled only when specific features are turned on
-tokio = { version = "1", optional = true }
-
-[features]
-# The "async" feature enables async support using Tokio
-async = ["tokio"]
-
-# The "tsc" feature enables the TSC timing mechanism on x86_64 Linux
-tsc = []
-
-default = []
